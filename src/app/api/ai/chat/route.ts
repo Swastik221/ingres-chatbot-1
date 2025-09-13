@@ -1,33 +1,36 @@
+// src/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 // System prompt tailored for INGRES AI groundwater assistant
-const SYSTEM_PROMPT = `You are INGRES AI, a concise, expert assistant on India's groundwater.
-- Be accurate, neutral, and cite assumptions when data is unknown.
-- Prefer structured, scannable answers with headings, bullets, and key metrics.
-- If the user asks for groundwater insights, analyze likely factors (recharge, extraction, trends, risk levels) and provide actionable recommendations.
-- If specific regional data is unavailable, say so clearly and suggest what to ask next.
-- Keep responses under 300-500 words unless the user requests more detail.
-
-CRITICAL OUTPUT REQUIREMENTS:
-- Respond in the SAME LANGUAGE as the user's query.
-- Always include a compact JSON block (fenced with ```json) that front-end can parse for charts and stats.
-- JSON schema:
-{
-  "language": "en|hi|<other>",
-  "explanation": "short, professional text in user's language",
-  "stats": [ { "label": string, "value": number, "unit"?: string } ],
-  "chart": {
-    "type": "bar" | "pie" | "line",
-    "title"?: string,
-    "xKey"?: string, // default "name"
-    "yKey"?: string, // default "value"
-    "data": [ { "name": string, "value": number } ]
-  }
-}
-- Keep numbers realistic; if unknown, clearly mark as demo estimates.`;
+const SYSTEM_PROMPT = [
+  "You are INGRES AI, a concise, expert assistant on India's groundwater.",
+  "- Be accurate, neutral, and cite assumptions when data is missing.",
+  "- Prefer structured, scannable answers with headings, bullets, and key metrics.",
+  "- If the user asks for groundwater insights, analyze likely factors (recharge, extraction, trends, risk levels) and provide actionable recommendations.",
+  "- If specific regional data is unavailable, say so clearly and suggest what to ask next.",
+  "- Keep responses under 300–500 words unless the user requests more detail.",
+  "",
+  "CRITICAL OUTPUT REQUIREMENTS:",
+  "- Respond in the SAME LANGUAGE as the user's query.",
+  "- Always include a compact JSON block (fenced as a code block with language json) that front-end can parse for charts and stats.",
+  "- JSON schema:",
+  "{",
+  '  "language": "en|hi|<other>",',
+  '  "explanation": "short, professional text in user\'s language",',
+  '  "stats": [ { "label": string, "value": number, "unit"?: string } ],',
+  "  \"chart\": {",
+  '    "type": "bar" | "pie" | "line",',
+  '    "title"?: string,',
+  '    "xKey"?: string, // default "name"',
+  '    "yKey"?: string, // default "value"',
+  '    "data": [ { "name": string, "value": number } ]',
+  "  }",
+  "}",
+  "- Keep numbers realistic; if unknown, clearly mark as demo estimates.",
+].join("\n");
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,66 +50,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build a single user message that includes system guidance + user query + lightweight context
-    const composedPrompt = [
-      `System Instruction:\n${SYSTEM_PROMPT}`,
-      context ? `Context (untrusted, optional):\n${JSON.stringify(context)}` : null,
-      `User Query:\n${query}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    // Build a single composed prompt
+    const composedPrompt = `
+${SYSTEM_PROMPT}
 
-    const resp = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: composedPrompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          topP: 0.9,
-          topK: 40,
-          maxOutputTokens: 1024,
-        },
-        safetySettings: [
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-        ],
-      }),
-    });
+User query: ${query}
 
-    if (!resp.ok) {
-      const text = await resp.text();
+Context (if any): ${context || "N/A"}
+`;
+
+    const response = await fetch(
+      `${GEMINI_API_URL}?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: composedPrompt }] },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Gemini API Error:", data);
       return NextResponse.json(
-        { error: `Gemini API error: ${resp.status} ${text}` },
-        { status: 502 }
+        { error: "Failed to fetch from Gemini API", details: data },
+        { status: 500 }
       );
     }
 
-    const data = (await resp.json()) as any;
-    const parts: string[] =
-      data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean) || [];
-    const text = parts.join("\n\n").trim();
-
-    if (!text) {
-      return NextResponse.json(
-        { error: "Gemini returned empty response" },
-        { status: 502 }
-      );
-    }
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
 
     return NextResponse.json({ text });
   } catch (err: any) {
+    console.error("Error in chat route:", err);
     return NextResponse.json(
-      { error: err?.message || "Unexpected server error" },
+      { error: "Internal server error", details: err.message },
       { status: 500 }
     );
   }
