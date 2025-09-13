@@ -173,7 +173,7 @@ export default function IngresChat({ mousePosition }: IngresChatProps) {
           : msg
       ));
 
-      const apiResponse: APIResponse = await makeAPICall('/api/groundwater/chat-query', {
+      const apiResponse = await makeAPICall('/api/ai/chat', {
         method: 'POST',
         body: JSON.stringify({ 
           query: userQuery,
@@ -183,78 +183,9 @@ export default function IngresChat({ mousePosition }: IngresChatProps) {
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Step 3: Generate structured response based on API data
-      let structuredResponse = "";
-      let sources: Source[] = [];
-
-      if (apiResponse.response.type === "assessment_data") {
-        const data = apiResponse.response.data;
-        structuredResponse = `## 📊 Groundwater Assessment: ${apiResponse.response.region}
-
-**Current Status:** ${data.stageOfExtraction} (${data.year})
-
-### Key Metrics
-• **Annual Recharge:** ${data.annualRecharge} MCM
-• **Total Extraction:** ${data.totalExtraction} MCM  
-• **Extraction Ratio:** ${data.extractionRatio}%
-• **Trend:** ${data.trend}
-
-### Analysis
-${apiResponse.response.summary}
-
-### Assessment Classification
-${getStatusAnalysis(data.stageOfExtraction, data.extractionRatio)}`;
-
-        sources = [
-          { id: "1", title: `${apiResponse.response.region} Groundwater Assessment`, type: "assessment", year: data.year },
-          { id: "2", title: "CGWB Assessment Database", type: "data", year: data.year }
-        ];
-      } else if (apiResponse.response.type === "critical_status") {
-        const data = apiResponse.response.data;
-        structuredResponse = `## ⚠️ Critical Areas Analysis: ${apiResponse.response.region}
-
-**Current Status:** ${data.currentStatus}
-**Risk Level:** ${data.isCritical ? "HIGH" : "MODERATE"}
-
-### Critical Assessment
-${apiResponse.response.summary}
-
-### Historical Critical Years
-${data.criticalYears.map((year: any) => 
-  `• **${year.year}:** ${year.status} (${year.extractionRatio}%)`
-).join('\n')}
-
-### Recommendations
-${getCriticalRecommendations(data.currentStatus, data.extractionRatio)}`;
-
-        sources = [
-          { id: "1", title: `Critical Units Assessment`, type: "assessment", year: new Date().getFullYear() },
-          { id: "2", title: "CGWB Critical Areas Database", type: "report", year: new Date().getFullYear() }
-        ];
-      } else if (apiResponse.response.type === "historical_data") {
-        const data = apiResponse.response.data;
-        structuredResponse = `## 📈 Historical Data Analysis: ${apiResponse.response.region}
-
-### Data Overview
-${apiResponse.response.summary}
-
-### Available Parameters
-${getHistoricalSummary(data.records)}
-
-*Use the export functionality to download detailed historical datasets for further analysis.*`;
-
-        sources = [
-          { id: "1", title: `${apiResponse.response.region} Historical Records`, type: "data", year: new Date().getFullYear() },
-          { id: "2", title: "INGRES Time Series Database", type: "data", year: new Date().getFullYear() }
-        ];
-      } else {
-        // Fallback for any other response types
-        structuredResponse = `## 🔍 INGRES Analysis Results
-
-${apiResponse.response.summary}
-
-*For more detailed analysis, try specific queries about assessment data, critical areas, or historical trends.*`;
-      }
+      // Step 3: Use Gemini response directly
+      const structuredResponse: string = apiResponse.text || "";
+      const sources: Source[] = [];
 
       // Step 4: Stream the final response
       setMessages(prev => prev.map(msg => 
@@ -264,7 +195,7 @@ ${apiResponse.response.summary}
               content: structuredResponse,
               streaming: false,
               sources: sources,
-              data: apiResponse.response.data
+              data: undefined
             }
           : msg
       ));
