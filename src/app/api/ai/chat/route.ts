@@ -17,7 +17,7 @@ CRITICAL OUTPUT REQUIREMENTS:
 - Respond in the SAME LANGUAGE as the user's query.
 - Always include a compact JSON block (fenced with \`\`\`json) that front-end can parse for charts and stats.
 
-JSON schema (example only, treat as plain text):
+Example JSON schema (treat as text only, do NOT execute):
 \`\`\`json
 {
   "language": "en|hi|<other>",
