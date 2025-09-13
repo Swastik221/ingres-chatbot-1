@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Shield
 } from "lucide-react";
+import ChartRenderer, { ChartSpec } from "@/components/ChartRenderer";
 
 interface Message {
   id: string;
@@ -183,19 +184,64 @@ export default function IngresChat({ mousePosition }: IngresChatProps) {
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Step 3: Use Gemini response directly
-      const structuredResponse: string = apiResponse.text || "";
-      const sources: Source[] = [];
+      // Step 3: Parse Gemini response for JSON block
+      const fullText: string = apiResponse.text || "";
+      let parsed: any | null = null;
+      const jsonMatch = fullText.match(/```json\n([\s\S]*?)\n```/i) || fullText.match(/\{[\s\S]*\}$/);
+      if (jsonMatch) {
+        const jsonStr = Array.isArray(jsonMatch) ? (jsonMatch[1] || jsonMatch[0]) : jsonMatch as any;
+        try {
+          parsed = JSON.parse(jsonStr);
+        } catch (_) {
+          // ignore JSON parse errors
+        }
+      }
 
-      // Step 4: Stream the final response
+      // Build message content and data
+      const explanation = parsed?.explanation || fullText;
+      const chartSpec: ChartSpec | undefined = parsed?.chart && parsed?.chart?.data
+        ? {
+            type: parsed.chart.type || 'bar',
+            title: parsed.chart.title,
+            xKey: parsed.chart.xKey || 'name',
+            yKey: parsed.chart.yKey || 'value',
+            data: parsed.chart.data,
+          }
+        : undefined;
+      const stats: Array<{ label: string; value: number; unit?: string }> = Array.isArray(parsed?.stats) ? parsed.stats : [];
+
+      // Fallback demo data when model doesn't supply structured JSON
+      let finalStats = stats;
+      let finalChart = chartSpec;
+      if (!finalStats || finalStats.length === 0) {
+        finalStats = [
+          { label: 'Extraction Ratio', value: 92, unit: '%' },
+          { label: 'Recharge Rate', value: 58, unit: 'mm/yr' },
+          { label: 'Critical Units', value: 12 }
+        ];
+      }
+      if (!finalChart) {
+        finalChart = {
+          type: 'bar',
+          title: 'Demo: Extraction vs Recharge',
+          xKey: 'name',
+          yKey: 'value',
+          data: [
+            { name: 'Extraction', value: 92 },
+            { name: 'Recharge', value: 58 }
+          ]
+        } as ChartSpec;
+      }
+
+      // Step 4: Set final response with structured data
       setMessages(prev => prev.map(msg => 
         msg.id === assistantMessage.id 
           ? { 
               ...msg, 
-              content: structuredResponse,
+              content: explanation,
               streaming: false,
-              sources: sources,
-              data: undefined
+              sources: [],
+              data: { stats: finalStats, chart: finalChart }
             }
           : msg
       ));
@@ -279,6 +325,16 @@ export default function IngresChat({ mousePosition }: IngresChatProps) {
     const parameterTypes = [...new Set(records.map(r => r.parameterType))];
     return parameterTypes.map(type => `• **${type.charAt(0).toUpperCase() + type.slice(1)}** measurements available`).join('\n');
   };
+
+  useEffect(() => {
+    const onNewChat = () => {
+      setMessages([]);
+      setCurrentMessage("");
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("ingres:new-chat", onNewChat as EventListener);
+    return () => window.removeEventListener("ingres:new-chat", onNewChat as EventListener);
+  }, []);
 
   return (
     <div className="min-h-screen relative">
@@ -409,15 +465,26 @@ export default function IngresChat({ mousePosition }: IngresChatProps) {
                       }`}>
                         {message.content}
                       </div>
-                      
-                      {message.streaming && (
-                        <div className="flex items-center space-x-3 mt-4">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                          </div>
-                          <span className="text-gray-400 text-sm text-premium">Processing...</span>
+
+                      {/* Render mocked stats + charts if available */}
+                      {message.type === 'assistant' && message.data && !message.streaming && (
+                        <div className="mt-5 space-y-4">
+                          {Array.isArray(message.data.stats) && message.data.stats.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {message.data.stats.map((s: any, i: number) => (
+                                <div key={i} className="glass-premium border border-gray-700/30 rounded-xl p-4">
+                                  <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+                                  <div className="text-2xl font-semibold text-white">{s.value}<span className="text-sm text-gray-400 ml-1">{s.unit || ''}</span></div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {message.data.chart && (
+                            <div className="glass-premium border border-gray-700/30 rounded-xl p-4">
+                              <ChartRenderer spec={message.data.chart as ChartSpec} height={280} />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

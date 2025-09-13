@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Search, Database, Menu, Settings } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -12,6 +13,12 @@ interface HeaderProps {
 
 export default function Header({ onToggleSidebar, mousePosition }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
+  const router = useRouter();
+
+  const startNewChat = () => {
+    window.dispatchEvent(new CustomEvent("ingres:new-chat"));
+    router.push("/chat");
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-premium border-b border-gray-800/30">
@@ -30,7 +37,7 @@ export default function Header({ onToggleSidebar, mousePosition }: HeaderProps) 
             </Button>
 
             {/* Minimal logo */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 cursor-pointer select-none" onClick={startNewChat}>
               <div className="relative group">
                 <div className="w-8 h-8 glass-premium rounded-lg flex items-center justify-center border border-gray-700/30 group-hover:border-blue-500/30 transition-elegant">
                   <Database className="w-4 h-4 text-blue-400 icon-glow-soft" />

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { History, Plus, MessageCircle, Clock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface ChatItem {
   id: string;
@@ -69,13 +70,16 @@ const mockChatHistory: ChatItem[] = [
 
 export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({ isOpen, onToggle, className = '' }) => {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleChatSelect = (chatId: string) => {
     setSelectedChatId(chatId);
   };
 
   const handleNewChat = () => {
-    console.log('Starting new chat...');
+    window.dispatchEvent(new CustomEvent("ingres:new-chat"));
+    onToggle?.();
+    router.push('/chat');
   };
 
   return (
